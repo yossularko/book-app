@@ -1,124 +1,195 @@
-import Image from 'next/image'
-import { Inter } from 'next/font/google'
+import { Inter } from "next/font/google";
+import {
+  Box,
+  Button,
+  CreateToastFnReturn,
+  Flex,
+  Input,
+  Text,
+  useToast,
+} from "@chakra-ui/react";
+import { useCallback, useState } from "react";
+import axios, { AxiosError } from "axios";
 
-const inter = Inter({ subsets: ['latin'] })
+interface Book {
+  id: string;
+  title: string;
+  author: string;
+  category: string;
+  year: number;
+}
+
+interface ErrorResponse {
+  statusCode: number;
+  message: string[];
+  error: string;
+}
+
+interface CustomHandle401 {
+  isCustom401: boolean;
+  handle401: () => void;
+}
+
+const inter = Inter({ subsets: ["latin"] });
+
+const fetchApi = axios.create({ baseURL: "http://localhost:4000" });
+const initialToken = { access_token: "", refresh_token: "" };
+const initialInput = { email: "", password: "" };
+
+const errorRes = (
+  err: AxiosError<ErrorResponse>,
+  toast: CreateToastFnReturn,
+  setLoading?: React.Dispatch<React.SetStateAction<boolean>>,
+  customHandle401?: CustomHandle401
+) => {
+  const { isCustom401, handle401 } = customHandle401 || {};
+
+  if (err.response?.data) {
+    const { statusCode, message } = err.response.data;
+
+    if (isCustom401 && statusCode === 401 && handle401) {
+      handle401();
+      if (setLoading) {
+        setLoading(false);
+      }
+      return;
+    }
+
+    toast({
+      status: "error",
+      title: statusCode,
+      description: JSON.stringify(message),
+    });
+    return;
+  }
+
+  toast({
+    status: "error",
+    title: err.code,
+    description: err.message,
+  });
+  console.log("error: ", err);
+  if (setLoading) {
+    setLoading(false);
+  }
+};
 
 export default function Home() {
+  const [token, setToken] = useState(initialToken);
+  const [input, setInput] = useState(initialInput);
+  const [loading, setLoading] = useState(false);
+
+  const [books, setBooks] = useState<Book[]>([]);
+  const [loadingBook, setLoadingBook] = useState(false);
+
+  const toast = useToast();
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  }, []);
+
+  const handleLogin = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetchApi.post("/auth/login", input);
+
+      console.log("success login: ", response.data);
+      setToken(response.data);
+      setLoading(false);
+    } catch (error) {
+      errorRes(error as AxiosError<ErrorResponse>, toast, setLoading);
+    }
+  }, [input, toast]);
+
+  const handleLogout = useCallback(() => {
+    setToken(initialToken);
+    setInput(initialInput);
+  }, []);
+
+  const handleRefreshToken = useCallback(async () => {
+    try {
+      const dataRefresh = {
+        refresh_token: token.refresh_token,
+      };
+      const response = await fetchApi.post("/auth/refresh-token", dataRefresh);
+
+      if (response.status === 201) {
+        toast({
+          status: "info",
+          title: "Refresh",
+          description: "Please try again",
+        });
+      }
+    } catch (error) {
+      errorRes(error as AxiosError<ErrorResponse>, toast);
+    }
+  }, [toast, token.refresh_token]);
+
+  const handleGetBook = useCallback(async () => {
+    setLoadingBook(true);
+    try {
+      const response = await fetchApi.get("/books", { withCredentials: true });
+
+      setBooks(response.data);
+      setLoadingBook(false);
+    } catch (error) {
+      errorRes(error as AxiosError<ErrorResponse>, toast, setLoadingBook, {
+        isCustom401: true,
+        handle401: handleRefreshToken,
+      });
+    }
+  }, [toast, handleRefreshToken]);
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">pages/index.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
+    <Flex className={inter.className}>
+      <Flex
+        direction="column"
+        minH="100vh"
+        w="420px"
+        bg="gray.900"
+        alignItems="center"
+        justifyContent="center"
+        p={6}
+      >
+        {!token.refresh_token ? (
+          <>
+            <Input
+              type="email"
+              name="email"
+              placeholder="input email"
+              onChange={handleChange}
+              mb={2}
             />
-          </a>
-        </div>
-      </div>
-
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700/10 after:dark:from-sky-900 after:dark:via-[#0141ff]/40 before:lg:h-[360px]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`${inter.className} mb-3 text-2xl font-semibold`}>
-            Docs{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p
-            className={`${inter.className} m-0 max-w-[30ch] text-sm opacity-50`}
-          >
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`${inter.className} mb-3 text-2xl font-semibold`}>
-            Learn{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p
-            className={`${inter.className} m-0 max-w-[30ch] text-sm opacity-50`}
-          >
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`${inter.className} mb-3 text-2xl font-semibold`}>
-            Templates{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p
-            className={`${inter.className} m-0 max-w-[30ch] text-sm opacity-50`}
-          >
-            Discover and deploy boilerplate example Next.js&nbsp;projects.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`${inter.className} mb-3 text-2xl font-semibold`}>
-            Deploy{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p
-            className={`${inter.className} m-0 max-w-[30ch] text-sm opacity-50`}
-          >
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
-  )
+            <Input
+              type="password"
+              name="password"
+              placeholder="input password"
+              onChange={handleChange}
+              mb={2}
+            />
+            <Button isLoading={loading} onClick={handleLogin}>
+              Login
+            </Button>
+          </>
+        ) : (
+          <Button onClick={handleLogout}>Logout</Button>
+        )}
+      </Flex>
+      <Box flex={1} p={6}>
+        <Text fontSize="3xl">Get All Books</Text>
+        {!token.refresh_token ? null : (
+          <>
+            <Button isLoading={loadingBook} onClick={handleGetBook}>
+              Get Books
+            </Button>
+            <Box>
+              <pre>
+                <code>{JSON.stringify(books, null, 2)}</code>
+              </pre>
+            </Box>
+          </>
+        )}
+      </Box>
+    </Flex>
+  );
 }
