@@ -91,7 +91,9 @@ export default function Home() {
   const handleLogin = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetchApi.post("/auth/login", input);
+      const response = await fetchApi.post("/auth/login", input, {
+        withCredentials: true,
+      });
 
       console.log("success login: ", response.data);
       setToken(response.data);
@@ -111,7 +113,9 @@ export default function Home() {
       const dataRefresh = {
         refresh_token: token.refresh_token,
       };
-      const response = await fetchApi.post("/auth/refresh-token", dataRefresh);
+      const response = await fetchApi.post("/auth/refresh-token", dataRefresh, {
+        withCredentials: true,
+      });
 
       if (response.status === 201) {
         toast({
